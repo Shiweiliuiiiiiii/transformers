@@ -104,7 +104,16 @@ class SparseTrainingArguments:
     prune: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
+    sparse_init: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    redistribution: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
     sparsity: float = field(
+        default=0.5, metadata={"help": "Sparsity of the model"}
+    )
+    prune_rate: float = field(
         default=0.5, metadata={"help": "Sparsity of the model"}
     )
 
