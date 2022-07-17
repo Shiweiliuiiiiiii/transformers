@@ -1755,6 +1755,8 @@ class Trainer:
                     else:
                         self.optimizer.step()
                         self.mask.apply_mask()
+                        for name, weights in model.named_parameters():
+                            print(f'Sparsity of the {name} is {(weights==0).sum()/weights.numel()}')
                     if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
 
