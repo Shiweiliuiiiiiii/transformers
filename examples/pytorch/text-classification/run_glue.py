@@ -575,12 +575,14 @@ def main():
 
     # Initialize masks
     mask=None
+    sparse_args.device = training_args.device
     if sparse_args.sparse:
         decay = CosineDecay(sparse_args.prune_rate, trainer.args.max_steps)
         train_dataloader = trainer.get_train_dataloader()
         mask = Masking(trainer.optimizer, train_loader=train_dataloader, prune_mode=sparse_args.prune, prune_rate_decay=decay, growth_mode=sparse_args.growth, redistribution_mode=sparse_args.redistribution, args=sparse_args)
         mask.add_module(model)
         trainer.mask = mask
+
     # Training
     if training_args.do_train:
         checkpoint = None
