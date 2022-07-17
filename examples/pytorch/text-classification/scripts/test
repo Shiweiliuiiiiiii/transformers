@@ -26,7 +26,7 @@ do
       for sparsity in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95 0.98
       do
       python run_glue.py \
-      --model_name_or_path $model  --task_name mrpc  \
+      --model_name_or_path $model  --task_name $task  \
       --do_train   --do_eval   --max_seq_length 128   \
       --per_device_train_batch_size 32   --learning_rate 2e-5   --num_train_epochs 3 \
       --output_dir ~/project_space/pruning_fails/distibert/$model/$task/$sparsity \
