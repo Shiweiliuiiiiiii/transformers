@@ -1754,7 +1754,8 @@ class Trainer:
                         optimizer_was_run = scale_before <= scale_after
                     else:
                         self.optimizer.step()
-                        self.mask.apply_mask()
+                        if self.mask:
+                            self.mask.apply_mask()
 
                     if optimizer_was_run and not self.deepspeed:
                         self.lr_scheduler.step()
