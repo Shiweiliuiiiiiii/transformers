@@ -77,12 +77,14 @@ class Masking(object):
         model = MyModel()
         mask.add_module(model)
     """
-    def __init__(self, optimizer, train_loader, prune_rate_decay, prune_rate=0.5, prune_mode='magnitude', growth_mode='random', redistribution_mode='momentum', verbose=False, fp16=False, args=False):
+    def __init__(self, optimizer, train_loader, prune_rate_decay, prune_rate=0.5, prune_mode='magnitude',
+                 growth_mode='random', redistribution_mode='momentum', verbose=False, fp16=False, args=False, train_args=False):
         growth_modes = ['random', 'momentum', 'momentum_neuron', 'gradient']
         if growth_mode not in growth_modes:
             print('Growth mode: {0} not supported!'.format(growth_mode))
             print('Supported modes are:', str(growth_modes))
         self.args = args
+        self.train_args = train_args
         self.device = torch.device(args.device)
         self.growth_mode = growth_mode
         self.prune_mode = prune_mode
@@ -331,7 +333,7 @@ class Masking(object):
     def apply_mask(self):
 
         # synchronism masks
-        if self.args.distributed:
+        if self.train_args.local_rank != -1:
             self.synchronism_masks()
 
         for module in self.modules:
@@ -339,8 +341,8 @@ class Masking(object):
                 if name in self.masks:
                     if not self.half:
                         tensor.data = tensor.data*self.masks[name]
-                        if 'momentum_buffer' in self.optimizer.state[tensor]:
-                            self.optimizer.state[tensor]['momentum_buffer'] = self.optimizer.state[tensor]['momentum_buffer']*self.masks[name]
+                        # if 'momentum_buffer' in self.optimizer.state[tensor]:
+                        #     self.optimizer.state[tensor]['momentum_buffer'] = self.optimizer.state[tensor]['momentum_buffer']*self.masks[name]
                     else:
                         tensor.data = tensor.data*self.masks[name].half()
                         if name in self.name_to_32bit:
