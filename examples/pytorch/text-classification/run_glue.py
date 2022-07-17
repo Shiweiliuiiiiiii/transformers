@@ -66,22 +66,49 @@ task_to_keys = {
 
 logger = logging.getLogger(__name__)
 
-def get_args_parser():
-    parser = argparse.ArgumentParser('Auguments for sparse training', add_help=False)
-    # large kernel
+# def get_args_parser():
+#     parser = argparse.ArgumentParser('Auguments for sparse training', add_help=False)
+#     # large kernel
+#
+#     parser.add_argument('--sparse', action='store_true', help='Enable sparse model. Default: False.')
+#     parser.add_argument('--growth', type=str, default='random', help='Growth mode. Choose from: momentum, random, gradient.')
+#     parser.add_argument('--prune', type=str, default='magnitude', help='Prune mode / pruning mode. Choose from: magnitude, SET.')
+#     parser.add_argument('--redistribution', type=str, default='none', help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
+#     parser.add_argument('--prune_rate', type=float, default=0.3, help='The pruning rate / prune rate.')
+#     parser.add_argument('--sparsity', type=float, default=0.4, help='The sparsity of the overall sparse network.')
+#     parser.add_argument('--verbose', action='store_true', help='Prints verbose status of pruning/growth algorithms.')
+#     parser.add_argument('--fix', action='store_true', help='Fix sparse model during training i.e., no weight adaptation.')
+#     parser.add_argument('--sparse_init', type=str, default='snip', help='layer-wise sparsity ratio')
+#     parser.add_argument('-u', '--update-frequency', type=int, default=100, metavar='N', help='how many iterations to adapt weights')
+#
+#     return parser
 
-    parser.add_argument('--sparse', action='store_true', help='Enable sparse model. Default: False.')
-    parser.add_argument('--growth', type=str, default='random', help='Growth mode. Choose from: momentum, random, gradient.')
-    parser.add_argument('--prune', type=str, default='magnitude', help='Prune mode / pruning mode. Choose from: magnitude, SET.')
-    parser.add_argument('--redistribution', type=str, default='none', help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
-    parser.add_argument('--prune_rate', type=float, default=0.3, help='The pruning rate / prune rate.')
-    parser.add_argument('--sparsity', type=float, default=0.4, help='The sparsity of the overall sparse network.')
-    parser.add_argument('--verbose', action='store_true', help='Prints verbose status of pruning/growth algorithms.')
-    parser.add_argument('--fix', action='store_true', help='Fix sparse model during training i.e., no weight adaptation.')
-    parser.add_argument('--sparse_init', type=str, default='snip', help='layer-wise sparsity ratio')
-    parser.add_argument('-u', '--update-frequency', type=int, default=100, metavar='N', help='how many iterations to adapt weights')
+@dataclass
+class SparseTrainingArguments:
+    """
+    Arguments pertaining to what sparse settings to use.
 
-    return parser
+    Using `HfArgumentParser` we can turn this class
+    into argparse arguments to be able to specify them on
+    the command line.
+    """
+    sparse: bool = field(
+        default=False, metadata={"help": "Enable sparse training."}
+    )
+    fix: bool = field(
+        default=False, metadata={"help": "Fixing the topology of the sparse model."}
+    )
+    growth: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    prune: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    sparsity: float = field(
+        default=0.5, metadata={"help": "Sparsity of the model"}
+    )
+
+
 
 
 @dataclass
@@ -229,12 +256,10 @@ def main():
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args, sparse_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args, sparse_args = parser.parse_args_into_dataclasses()
 
-    parser_sparse = argparse.ArgumentParser('sparse training script', parents=[get_args_parser()])
-    sparse_args = parser_sparse.parse_args()
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
