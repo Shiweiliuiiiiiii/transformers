@@ -1612,7 +1612,7 @@ class Trainer:
                 self.mask.print_status()
             else:
                 self.mask.init(model=model, train_loader=train_dataloader, device=self.mask.device,
-                           mode=self.mask.sparse_init, density=1 - self.mask.sparsity)
+                           mode=self.mask.sparse_init, density=(1 - self.mask.sparsity))
 
         # important: at this point:
         # self.model         is the Transformers Model
