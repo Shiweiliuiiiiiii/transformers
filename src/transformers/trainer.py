@@ -1580,7 +1580,7 @@ class Trainer:
         # initialize masks
 
         if self.mask:
-            if self.mask.sparse_init != 'snip':
+            if self.mask.sparse_init == 'snip':
                 layer_wise_sparsities = self.SNIP(model, 1 - self.mask.sparsity, train_dataloader,
                                                   self.mask.device, self.mask.masks)
                 for sparsity_, name in zip(layer_wise_sparsities, self.mask.masks):
