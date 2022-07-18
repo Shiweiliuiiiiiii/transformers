@@ -1609,7 +1609,7 @@ class Trainer:
                                                   self.mask.device, self.mask.masks)
                 for sparsity_, name in zip(layer_wise_sparsities, self.mask.masks):
                     self.mask.masks[name][:] = (torch.rand(self.mask.masks[name].shape) < (1 - sparsity_)).float().data.to(self.mask.device)
-
+                self.mask.print_status()
             else:
                 self.mask.init(model=model, train_loader=train_dataloader, device=self.mask.device,
                            mode=self.mask.sparse_init, density=1 - self.mask.sparsity)
