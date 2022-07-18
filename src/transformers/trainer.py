@@ -1485,7 +1485,7 @@ class Trainer:
                 loss.backward()
 
             grads_abs = []
-            for name, weight in net.named_parameters():
+            for name, weight in model.named_parameters():
                 if name not in masks: continue
                 grads_abs.append(torch.abs(weight * weight.grad))
 
@@ -1502,7 +1502,7 @@ class Trainer:
                 sparsity = float((mask == 0).sum().item() / mask.numel())
                 layer_wise_sparsities.append(sparsity)
 
-            net.zero_grad()
+            model.zero_grad()
 
         return layer_wise_sparsities
 
