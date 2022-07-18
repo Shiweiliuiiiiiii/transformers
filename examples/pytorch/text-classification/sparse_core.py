@@ -50,7 +50,7 @@ class Masking(object):
         self.train_args = train_args
         self.fix = args.fix
         self.sparse_init = args.sparse_init
-        self.aprsity = sparsity
+        self.sparsity = sparsity
         self.device = torch.device(args.device)
         self.growth_mode = growth_mode
         self.prune_mode = prune_mode
