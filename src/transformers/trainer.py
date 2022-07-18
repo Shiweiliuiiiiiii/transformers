@@ -27,12 +27,17 @@ import re
 import shutil
 import sys
 import time
+import copy
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from tqdm.auto import tqdm
+
+
+
+
 
 
 # Integrations must be imported before ML frameworks:
@@ -306,14 +311,12 @@ class Trainer:
         callbacks: Optional[List[TrainerCallback]] = None,
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
-        mask = None
     ):
         if args is None:
             output_dir = "tmp_trainer"
             logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
             args = TrainingArguments(output_dir=output_dir)
         self.args = args
-        self.mask = mask
         # Seed must be set before instantiating the model when using model
         enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
         self.hp_name = None
@@ -1371,6 +1374,7 @@ class Trainer:
         resume_from_checkpoint: Optional[Union[str, bool]] = None,
         trial: Union["optuna.Trial", Dict[str, Any]] = None,
         ignore_keys_for_eval: Optional[List[str]] = None,
+        mask=None,
         **kwargs,
     ):
         """
@@ -1394,7 +1398,7 @@ class Trainer:
 
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
-
+        self.mask = mask
         args = self.args
 
         self.is_in_train = True
@@ -1450,6 +1454,33 @@ class Trainer:
             trial=trial,
             ignore_keys_for_eval=ignore_keys_for_eval,
         )
+
+    def SNIP(self, net, keep_ratio, train_dataloader, device, masks):
+        net = copy.deepcopy(net)
+        for step, inputs in enumerate(train_dataloader):
+
+            tr_loss_step = self.training_step(net, inputs)
+            tr_loss_step.backward()
+            grads_abs = []
+            for name, weight in net.named_parameters():
+                if name not in masks: continue
+                grads_abs.append(torch.abs(weight * weight.grad))
+
+            # Gather all scores in a single vector and normalise
+            all_scores = torch.cat([torch.flatten(x) for x in grads_abs])
+
+            num_params_to_keep = int(len(all_scores) * keep_ratio)
+            threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
+            acceptable_score = threshold[-1]
+
+            layer_wise_sparsities = []
+            for g in grads_abs:
+                mask = (g > acceptable_score).float()
+                sparsity = float((mask == 0).sum().item() / mask.numel())
+                layer_wise_sparsities.append(sparsity)
+
+            net.zero_grad()
+            return layer_wise_sparsities
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
@@ -1545,6 +1576,19 @@ class Trainer:
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
+
+        # initialize masks
+
+        if self.mask:
+            if self.mask.sparse_init != 'snip':
+                layer_wise_sparsities = self.SNIP(model, 1 - self.mask.sparsity, train_dataloader,
+                                                  self.mask.device, self.mask.masks)
+                for sparsity_, name in zip(layer_wise_sparsities, self.mask.masks):
+                    self.mask.masks[name][:] = (torch.rand(self.mask.masks[name].shape) < (1 - sparsity_)).float().data.to(self.mask.device)
+
+            else:
+                self.mask.init(model=model, train_loader=train_dataloader, device=self.mask.device,
+                           mode=self.mask.sparse_init, density=1 - self.mask.sparsity)
 
         # important: at this point:
         # self.model         is the Transformers Model

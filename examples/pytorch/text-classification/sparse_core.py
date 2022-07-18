@@ -8,43 +8,6 @@ import torch.nn.functional as F
 from funcs import redistribution_funcs, growth_funcs, prune_funcs
 
 
-def SNIP(net, keep_ratio, train_dataloader, device, masks, args):
-    if args.distributed:
-        train_dataloader.sampler.set_epoch(0)
-
-    # Grab a single batch from the training dataset
-    images, labels = next(iter(train_dataloader))
-    input_var = images.to(device, non_blocking=True)
-    target_var = labels.to(device, non_blocking=True)
-
-    # Let's create a fresh copy of the network so that we're not worried about
-    # affecting the actual training-phase
-    net = copy.deepcopy(net)
-    net.zero_grad()
-    outputs = net(input_var)
-    loss = F.cross_entropy(outputs, target_var)
-    loss.backward()
-
-    grads_abs = []
-    for name, weight in net.named_parameters():
-        if name not in masks: continue
-        grads_abs.append(torch.abs(weight*weight.grad))
-
-    # Gather all scores in a single vector and normalise
-    all_scores = torch.cat([torch.flatten(x) for x in grads_abs])
-
-    num_params_to_keep = int(len(all_scores) * keep_ratio)
-    threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
-    acceptable_score = threshold[-1]
-
-    layer_wise_sparsities = []
-    for g in grads_abs:
-        mask = (g > acceptable_score).float()
-        sparsity = float((mask==0).sum().item() / mask.numel())
-        layer_wise_sparsities.append(sparsity)
-
-    net.zero_grad()
-    return layer_wise_sparsities
 
 class CosineDecay(object):
     """Decays a pruning rate according to a cosine schedule
@@ -77,13 +40,15 @@ class Masking(object):
         model = MyModel()
         mask.add_module(model)
     """
-    def __init__(self, optimizer, train_loader, prune_rate_decay, prune_rate=0.5, prune_mode='magnitude',
-                 growth_mode='random', redistribution_mode='momentum', verbose=False, fp16=False, args=False, train_args=False):
+    def __init__(self, optimizer, prune_rate_decay, prune_rate=0.5, sparsity=0.0, prune_mode='magnitude',
+                 growth_mode='random', redistribution_mode='momentum', verbose=False, fp16=False,
+                 args=False, train_args=False):
         growth_modes = ['random', 'momentum', 'momentum_neuron', 'gradient']
         if growth_mode not in growth_modes:
             print('Growth mode: {0} not supported!'.format(growth_mode))
             print('Supported modes are:', str(growth_modes))
-        self.args = args
+        self.fix = args.fix
+        self.sparse_init = args.sparse_init
         self.train_args = train_args
         self.device = torch.device(args.device)
         self.growth_mode = growth_mode
@@ -91,7 +56,6 @@ class Masking(object):
         self.redistribution_mode = redistribution_mode
         self.prune_rate_decay = prune_rate_decay
         self.verbose = verbose
-        self.train_loader = train_loader
         self.growth_func = growth_mode
         self.prune_func = prune_mode
         self.redistribution_func = redistribution_mode
@@ -114,8 +78,8 @@ class Masking(object):
         self.half = fp16
         self.name_to_32bit = {}
 
-        if self.args.fix:
-            self.args.update_frequency = None
+        if self.fix:
+            self.update_frequency = None
 
 
     def add_module(self, module):
@@ -126,7 +90,6 @@ class Masking(object):
                 self.names.append(name)
                 self.masks[name] = torch.zeros_like(tensor, dtype=torch.float32, requires_grad=False).to(self.device)
 
-        self.init(mode=self.args.sparse_init, density=1-self.args.sparsity)
 
 
     def init_optimizer(self):
@@ -135,30 +98,27 @@ class Masking(object):
                 self.name_to_32bit[name] = tensor2
             self.half = True
 
-    def init(self, mode='snip', density=0.05, erk_power_scale=1.0):
+    def init(self, model, train_loader , device, mode='snip', density=0.05, erk_power_scale=1.0):
         self.init_growth_prune_and_redist()
         # self.init_optimizer()
-        self.density = density
 
         if mode == 'global_magnitude':
             print('initialize by global magnitude')
             weight_abs = []
-            for module in self.modules:
-                for name, weight in module.named_parameters():
-                    if name not in self.masks: continue
-                    weight_abs.append(torch.abs(weight))
+            for name, weight in model.named_parameters():
+                if name not in self.masks: continue
+                weight_abs.append(torch.abs(weight))
 
             # Gather all scores in a single vector and normalise
             all_scores = torch.cat([torch.flatten(x) for x in weight_abs])
-            num_params_to_keep = int(len(all_scores) * self.density)
+            num_params_to_keep = int(len(all_scores) * density)
 
             threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
             acceptable_score = threshold[-1]
 
-            for module in self.modules:
-                for name, weight in module.named_parameters():
-                    if name not in self.masks: continue
-                    self.masks[name] = ((torch.abs(weight)) >= acceptable_score).float()
+            for name, weight in model.named_parameters():
+                if name not in self.masks: continue
+                self.masks[name] = ((torch.abs(weight)) >= acceptable_score).float()
 
         if mode == 'uniform':
             print('initialized with uniform')
@@ -166,11 +126,10 @@ class Masking(object):
             # each layer will have weight.numel()*density weights.
             # weight.numel()*density == weight.numel()*(1.0-sparsity)
             self.baseline_nonzero = 0
-            for module in self.modules:
-                for name, weight in module.named_parameters():
-                    if name not in self.masks: continue
-                    self.masks[name][:] = (torch.rand(weight.shape) < density).float().data.to(self.device)
-                    self.baseline_nonzero += weight.numel()*density
+            for name, weight in model.named_parameters():
+                if name not in self.masks: continue
+                self.masks[name][:] = (torch.rand(weight.shape) < density).float().data.to(device)
+                self.baseline_nonzero += weight.numel()*density
 
         elif mode == 'resume':
             print('initialized with resume')
@@ -179,23 +138,14 @@ class Masking(object):
             # if you want to resume a sparse model but did not
             # save the mask.
             self.baseline_nonzero = 0
-            for module in self.modules:
-                for name, weight in module.named_parameters():
-                    if name not in self.masks: continue
-                    print((weight != 0.0).sum().item())
-                    if name in self.name_to_32bit:
-                        print('W2')
-                    self.masks[name][:] = (weight != 0.0).float().data.to(self.device)
-                    self.baseline_nonzero += weight.numel()*density
+            for name, weight in model.named_parameters():
+                if name not in self.masks: continue
+                print((weight != 0.0).sum().item())
+                if name in self.name_to_32bit:
+                    print('W2')
+                self.masks[name][:] = (weight != 0.0).float().data.to(device)
+                self.baseline_nonzero += weight.numel()*density
 
-        elif mode == 'snip':
-            print('initialize by snip')
-            self.baseline_nonzero = 0
-            layer_wise_sparsities = SNIP(self.module, density, self.train_loader, self.device, self.masks, self.args)
-
-            for sparsity_, name in zip(layer_wise_sparsities, self.masks):
-                self.masks[name][:] = (torch.rand(self.masks[name].shape) < (1 - sparsity_)).float().data.to(
-                    self.device)
 
         elif mode == 'ERK':
             print('initialize by fixed_ERK')
@@ -268,7 +218,7 @@ class Masking(object):
             layer_density = sparse_weight_num / dense_weight_num
             if layer_density >= 0.99: dense_layers.append(name)
             print(f'Density of layer {name} with tensor {weight.size()} is {layer_density}')
-        print('Final sparsity level of {0}: {1}'.format(1-self.density, 1 - sparse_size / total_size))
+        print('Final sparsity level of {0}: {1}'.format(1-density, 1 - sparse_size / total_size))
 
         # masks of layers with density=1 are removed
         for name in dense_layers:
@@ -323,8 +273,8 @@ class Masking(object):
         self.prune_rate = self.prune_rate_decay.get_dr(self.prune_rate)
         self.steps += 1
 
-        if self.args.update_frequency is not None:
-            if self.steps % self.args.update_frequency == 0:
+        if self.update_frequency is not None:
+            if self.steps % self.update_frequency == 0:
                 print('*********************************Dynamic Sparsity********************************')
                 self.truncate_weights()
                 self.print_nonzero_counts()
