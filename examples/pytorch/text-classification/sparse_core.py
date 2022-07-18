@@ -47,9 +47,10 @@ class Masking(object):
         if growth_mode not in growth_modes:
             print('Growth mode: {0} not supported!'.format(growth_mode))
             print('Supported modes are:', str(growth_modes))
+        self.train_args = train_args
         self.fix = args.fix
         self.sparse_init = args.sparse_init
-        self.train_args = train_args
+        self.aprsity = sparsity
         self.device = torch.device(args.device)
         self.growth_mode = growth_mode
         self.prune_mode = prune_mode
