@@ -1456,11 +1456,34 @@ class Trainer:
         )
 
     def SNIP(self, net, keep_ratio, train_dataloader, device, masks):
-        net = copy.deepcopy(net)
+        model = copy.deepcopy(net)
+        model.train()
         for step, inputs in enumerate(train_dataloader):
+            if step > 0:
+                break
+            inputs = self._prepare_inputs(inputs)
 
-            tr_loss_step = self.training_step(net, inputs)
-            tr_loss_step.backward()
+            with self.compute_loss_context_manager():
+                loss = self.compute_loss(model, inputs)
+
+            if self.args.n_gpu > 1:
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+            if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+                # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
+                loss = loss / self.args.gradient_accumulation_steps
+
+            if self.do_grad_scaling:
+                self.scaler.scale(loss).backward()
+            elif self.use_apex:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            elif self.deepspeed:
+                # loss gets scaled under gradient_accumulation_steps in deepspeed
+                loss = self.deepspeed.backward(loss)
+            else:
+                loss.backward()
+
             grads_abs = []
             for name, weight in net.named_parameters():
                 if name not in masks: continue
@@ -1480,7 +1503,8 @@ class Trainer:
                 layer_wise_sparsities.append(sparsity)
 
             net.zero_grad()
-            return layer_wise_sparsities
+
+        return layer_wise_sparsities
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
