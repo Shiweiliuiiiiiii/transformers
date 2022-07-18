@@ -85,24 +85,23 @@ class Masking(object):
 
     def add_module(self, module):
         self.modules.append(module)
-        self.module = module
-        for name, tensor in module.named_parameters():
-            if len(tensor.size()) == 2 or len(tensor.size()) == 4:
-                self.names.append(name)
-                self.masks[name] = torch.zeros_like(tensor, dtype=torch.float32, requires_grad=False).to(self.device)
+        for module in self.modules:
+            for name, tensor in module.named_parameters():
+                if len(tensor.size()) == 2 or len(tensor.size()) == 4:
+                    self.names.append(name)
+                    self.masks[name] = torch.zeros_like(tensor, dtype=torch.float32, requires_grad=False).to(self.device)
 
     def print_status(self):
         total_size = 0
         sparse_size = 0
-        dense_layers = []
-        for name, weight in self.masks.items():
-            dense_weight_num = weight.numel()
-            sparse_weight_num = (weight != 0).sum().int().item()
-            total_size += dense_weight_num
-            sparse_size += sparse_weight_num
-            layer_density = sparse_weight_num / dense_weight_num
-            if layer_density >= 0.99: dense_layers.append(name)
-            print(f'Density of layer {name} with tensor {weight.size()} is {layer_density}')
+        for module in self.modules:
+            for name, weight in module.named_parameters():
+                dense_weight_num = weight.numel()
+                sparse_weight_num = (weight != 0).sum().int().item()
+                total_size += dense_weight_num
+                sparse_size += sparse_weight_num
+                layer_density = sparse_weight_num / dense_weight_num
+                print(f'sparsity of layer {name} with tensor {weight.size()} is {1-layer_density}')
         print('Final sparsity level of {0}: {1}'.format(self.sparsity, 1 - sparse_size / total_size))
 
     def init_optimizer(self):
@@ -220,11 +219,6 @@ class Masking(object):
                 total_nonzero += density_dict[name] * mask.numel()
             print(f"Overall sparsity {total_nonzero / total_params}")
 
-
-        # masks of layers with density=1 are removed
-        for name in dense_layers:
-            self.masks.pop(name)
-            print(f"pop out layer {name}")
 
         self.apply_mask()
         self.print_status()
