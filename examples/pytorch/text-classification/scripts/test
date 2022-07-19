@@ -1,17 +1,19 @@
 #!/bin/bash
-#SBATCH --job-name=pruning_fails_glue_snip
+#SBATCH --job-name=pruning_fails_glue_snip_gm
 #SBATCH -p gpu
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --gpus=1
-#SBATCH -t 0-12:00:00
+#SBATCH -t 2-00:00:00
 #SBATCH --cpus-per-task=18
-#SBATCH -o pruning_fails_bert_glue_snip.out
+#SBATCH -o pruning_fails_bert_glue_snip_gm.out
 
 source /home/sliu/miniconda3/etc/profile.d/conda.sh
 source activate transformer
 
+for method in snip global_magnitude
+do
 for model in bert-base-uncased
 do
   for task in cola sst2 mrpc stsb qqp mnli qnli rte wnli
@@ -23,8 +25,10 @@ do
       --model_name_or_path $model  --task_name $task  \
       --do_train   --do_eval   --max_seq_length 128   \
       --per_device_train_batch_size 32   --learning_rate 2e-5   --num_train_epochs 3 \
-      --output_dir ~/project_space/pruning_fails/text-classification/$model/$task/snip/$sparsity \
-      --sparse --fix --sparse_init snip --sparsity $sparsity
+      --output_dir ~/project_space/pruning_fails/text-classification/$model/$method/$task/snip/$sparsity \
+      --sparse --fix --sparse_init $method --sparsity $sparsity
       done
   done
 done
+done
+
