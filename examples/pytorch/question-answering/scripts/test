@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pruning_fails_distilbert_glue_snip
+#SBATCH --job-name=pruning_fails_distilbert_bert_QA_snip
 #SBATCH -p gpu
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
@@ -7,20 +7,18 @@
 #SBATCH --gpus=1
 #SBATCH -t 0-12:00:00
 #SBATCH --cpus-per-task=18
-#SBATCH -o pruning_fails_distilbert_bert_glue_snip.out
+#SBATCH -o pruning_fails_distilbert_bert_QA_snip.out
 
 source /home/sliu/miniconda3/etc/profile.d/conda.sh
 source activate transformer
 
 for model in distilbert-base-uncased
 do
-  for task in cola sst2 mrpc stsb qqp mnli qnli rte wnli
-  do
 
-      for sparsity in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95 0.98
-      do
+for sparsity in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95 0.98
+do
       python run_qa.py \
-          --model_name_or_path distilbert-base-uncased \
+          --model_name_or_path $model \
           --dataset_name squad \
           --do_train \
           --do_eval \
@@ -29,8 +27,7 @@ do
           --num_train_epochs 2 \
           --max_seq_length 384 \
           --doc_stride 128 \
-          --output_dir /tmp/debug_squad/  \
-          --sparse --fix --sparse_init snip --sparsity 0.1
-      done
-  done
+          --output_dir ~/project_space/pruning_fails/QA/distibert/snip/$sparsity \  \
+          --sparse --fix --sparse_init snip --sparsity $sparsity
+done
 done
