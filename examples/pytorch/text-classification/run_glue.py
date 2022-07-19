@@ -45,7 +45,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 import argparse
-from sparse_core import Masking, CosineDecay
+from ..sparse_utils.sparse_core import Masking, CosineDecay
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.21.0.dev0")
@@ -65,23 +65,6 @@ task_to_keys = {
 }
 
 logger = logging.getLogger(__name__)
-
-# def get_args_parser():
-#     parser = argparse.ArgumentParser('Auguments for sparse training', add_help=False)
-#     # large kernel
-#
-#     parser.add_argument('--sparse', action='store_true', help='Enable sparse model. Default: False.')
-#     parser.add_argument('--growth', type=str, default='random', help='Growth mode. Choose from: momentum, random, gradient.')
-#     parser.add_argument('--prune', type=str, default='magnitude', help='Prune mode / pruning mode. Choose from: magnitude, SET.')
-#     parser.add_argument('--redistribution', type=str, default='none', help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
-#     parser.add_argument('--prune_rate', type=float, default=0.3, help='The pruning rate / prune rate.')
-#     parser.add_argument('--sparsity', type=float, default=0.4, help='The sparsity of the overall sparse network.')
-#     parser.add_argument('--verbose', action='store_true', help='Prints verbose status of pruning/growth algorithms.')
-#     parser.add_argument('--fix', action='store_true', help='Fix sparse model during training i.e., no weight adaptation.')
-#     parser.add_argument('--sparse_init', type=str, default='snip', help='layer-wise sparsity ratio')
-#     parser.add_argument('-u', '--update-frequency', type=int, default=100, metavar='N', help='how many iterations to adapt weights')
-#
-#     return parser
 
 @dataclass
 class SparseTrainingArguments:

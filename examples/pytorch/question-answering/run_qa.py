@@ -45,7 +45,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from utils_qa import postprocess_qa_predictions
-
+from ..sparse_utils.sparse_core import Masking, CosineDecay
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.21.0.dev0")
@@ -54,6 +54,39 @@ require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/ques
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class SparseTrainingArguments:
+    """
+    Arguments pertaining to what sparse settings to use.
+
+    Using `HfArgumentParser` we can turn this class
+    into argparse arguments to be able to specify them on
+    the command line.
+    """
+    sparse: bool = field(
+        default=False, metadata={"help": "Enable sparse training."}
+    )
+    fix: bool = field(
+        default=False, metadata={"help": "Fixing the topology of the sparse model."}
+    )
+    growth: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    prune: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    sparse_init: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    redistribution: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    sparsity: float = field(
+        default=0.5, metadata={"help": "Sparsity of the model"}
+    )
+    prune_rate: float = field(
+        default=0.5, metadata={"help": "Sparsity of the model"}
+    )
 
 @dataclass
 class ModelArguments:
@@ -218,13 +251,14 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, SparseTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args, sparse_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args, sparse_args = parser.parse_args_into_dataclasses()
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -610,6 +644,16 @@ def main():
         post_process_function=post_processing_function,
         compute_metrics=compute_metrics,
     )
+    # Initialize masks
+    mask = None
+    sparse_args.device = training_args.device
+    if sparse_args.sparse:
+        decay = CosineDecay(sparse_args.prune_rate, trainer.args.max_steps)
+        mask = Masking(trainer.optimizer, prune_rate_decay=decay, prune_rate=sparse_args.prune_rate,
+                       sparsity=sparse_args.sparsity, prune_mode=sparse_args.prune,
+                       growth_mode=sparse_args.growth, redistribution_mode=sparse_args.redistribution,
+                       args=sparse_args, train_args=training_args)
+        mask.add_module(model)
 
     # Training
     if training_args.do_train:
