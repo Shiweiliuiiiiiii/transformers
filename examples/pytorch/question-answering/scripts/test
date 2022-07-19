@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=pruning_fails_distilbert_glue_snip
+#SBATCH -p gpu
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=1
+#SBATCH --gpus=1
+#SBATCH -t 0-12:00:00
+#SBATCH --cpus-per-task=18
+#SBATCH -o pruning_fails_distilbert_bert_glue_snip.out
+
+source /home/sliu/miniconda3/etc/profile.d/conda.sh
+source activate transformer
+
+for model in distilbert-base-uncased
+do
+  for task in cola sst2 mrpc stsb qqp mnli qnli rte wnli
+  do
+
+      for sparsity in 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95 0.98
+      do
+      python run_qa.py \
+          --model_name_or_path distilbert-base-uncased \
+          --dataset_name squad \
+          --do_train \
+          --do_eval \
+          --per_device_train_batch_size 12 \
+          --learning_rate 3e-5 \
+          --num_train_epochs 2 \
+          --max_seq_length 384 \
+          --doc_stride 128 \
+          --output_dir /tmp/debug_squad/  \
+          --sparse --fix --sparse_init snip --sparsity 0.1
+      done
+  done
+done
