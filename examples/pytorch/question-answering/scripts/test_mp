@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pruning_fails_distilbert_bert_QA_snip
+#SBATCH --job-name=pruning_fails_distilbert_bert_QA_mp
 #SBATCH -p gpu
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
@@ -7,7 +7,7 @@
 #SBATCH --gpus=1
 #SBATCH -t 0-12:00:00
 #SBATCH --cpus-per-task=18
-#SBATCH -o pruning_fails_distilbert_bert_QA_snip.out
+#SBATCH -o pruning_fails_distilbert_bert_QA_mp.out
 
 source /home/sliu/miniconda3/etc/profile.d/conda.sh
 source activate transformer
@@ -27,7 +27,7 @@ do
           --num_train_epochs 2 \
           --max_seq_length 384 \
           --doc_stride 128 \
-          --output_dir ~/project_space/pruning_fails/QA/distibert/snip/$sparsity \  \
-          --sparse --fix --sparse_init snip --sparsity $sparsity
+          --output_dir ~/project_space/pruning_fails/QA/distibert/global_magnitude/$sparsity \  \
+          --sparse --fix --sparse_init global_magnitude --sparsity $sparsity
 done
 done
